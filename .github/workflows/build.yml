@@ -1,0 +1,69 @@
+name: "Build kernel"
+
+on:
+  workflow_dispatch:
+
+env:
+  WORKSPACE: ${{ github.workspace }}
+  OUT_DIR: "${{ github.workspace }}/out"
+
+  KERNEL_DEVICE: "renoir"
+  KERNEL_NAME: "kernel_xiaomi_sm8350"
+  KERNEL_REPO: "https://github.com/ponces/kernel_xiaomi_sm8350"
+  KERNEL_BRANCH: "fourteen"
+
+  TOOLCHAIN_NAME: "proton-clang"
+  TOOLCHAIN_REPO: "https://github.com/kdrag0n/proton-clang"
+  TOOLCHAIN_BRANCH: "master"
+
+jobs:
+  Build-Kernel:
+    name: "Build kernel"
+    runs-on: ubuntu-22.04
+    strategy:
+      max-parallel: 4
+      fail-fast: false
+    outputs:
+      builddate: ${{ steps.generate-builddate.outputs.builddate }}
+    steps:
+      - name: "Set builddate"
+        id: generate-builddate
+        run: echo "builddate=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+  
+      - name: "Install prerequisites"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev python2 python3 libarchive-tools
+
+      - name: "Clone kernel source => (${{ env.KERNEL_REPO }})"
+        working-directory: "${{ env.WORKSPACE }}"
+        run: |
+          git clone --recursive --depth=1 -j $(nproc) --branch ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_REPO }} ${{ env.KERNEL_NAME }}
+          echo "Clone kernel source => (${{ env.KERNEL_REPO }})"
+
+      - name: "Get toolchain"
+        working-directory: "${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}/toolchain"
+        run: |
+            git clone --recursive --depth=1 -j $(nproc) --branch ${{ env.TOOLCHAIN_BRANCH }} ${{ env.TOOLCHAIN_REPO }} ${{ env.TOOLCHAIN_NAME }}
+            echo "Clone ${{ env.TOOLCHAIN_NAME }} => (${{ env.TOOLCHAIN_REPO }})"
+            echo "${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}/toolchain/${{ env.TOOLCHAIN_NAME }}/bin" >> $GITHUB_PATH
+
+      - name: "Build kernel"
+        working-directory: "${{ env.WORKSPACE }}/${{ env.KERNEL_NAME }}"
+        run: |
+          echo "PATH Variable: $PATH"
+          ./build.sh buildksu
+
+      - name: "Upload AnyKernel3 image"
+        uses: actions/upload-artifact@v3
+        with:
+          name: "${{ env.KERNEL_DEVICE }}-${{ env.KERNEL_NAME }}_${{ env.builddate }}"
+          path: "${{ env.OUT_DIR }}/ak3/*"
+
+      - name: "Create GitHub Release"
+        continue-on-error: true
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.builddate }}.${{ github.run_number }}
+          files: "${{ env.OUT_DIR }}/ak3/*.zip"
+          generate_release_notes: true
