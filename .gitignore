@@ -91,6 +91,7 @@ modules.order
 !.gitattributes
 !.gitignore
 !.mailmap
+!.github
 
 #
 # Generated include files
@@ -153,3 +154,6 @@ arch/arm/boot/dts/vendor
 #Ignoring Android.bp link file
 #
 Android.bp
+
+# Android toolchains
+toolchain
